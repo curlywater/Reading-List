@@ -184,7 +184,7 @@ typeof(str); // "string"
 
 ## 运算符
 
-- 进行算术操作时，会对运算元进行数字类型转换
+- 进行算术操作时，会对运算元进行**数字类型**转换
 - 二元 运算符 "+" 具有字符串类型转换和连接字符串的特性：如果其中一个运算元是字符串，运算元将被转换为字符串连接。例如："4" + 2 // "42"
 - 一元运算符 "+" "-" 具有数字类型转换特性，例如 +"4" // 4，-"4" // -4
 - 自增/自减运算符：自增自减只能应用于变量。前置先做自增自减再做其他操作，后置先做其他操作再自增自减
@@ -201,16 +201,16 @@ typeof(str); // "string"
 
 - 不同类型数据比较
 
-  - 转换为数字类型再进行比较，例如`"1" > false`
+  - 转换为**数字类型**再进行比较，例如`"1" > false`
 
-  - **特殊的：**相等比较时，null和undefined不会进行类型转换，因此
+  - **特殊的：** 相等比较时，null和undefined不会进行类型转换，因此
 
     ```javascript
     null == undefined // true
     null == 0 // false
     ```
 
-  - **再特殊的：**严格相等比较时，不会进行类型转换么，因此
+  - **再特殊的：** 严格相等比较时，不会进行类型转换么，因此
 
     ```javascript
     null === undefined // false
@@ -229,7 +229,7 @@ typeof(str); // "string"
 ## 函数
 
 - 函数表达式在代码执行到达时被创建，并且仅从那一刻起可用。
-- **在函数声明被定义之前，它就可以被调用。**这是内部算法的原故。当 JavaScript **准备** 运行脚本时，首先会在脚本中寻找全局函数声明，并创建这些函数。我们可以将其视为“初始化阶段”。
+- **在函数声明被定义之前，它就可以被调用。** 这是内部算法的原故。当 JavaScript **准备** 运行脚本时，首先会在脚本中寻找全局函数声明，并创建这些函数。我们可以将其视为“初始化阶段”。
 - 严格模式下，当一个函数声明在一个代码块内时，它在该代码块内的任何位置都是可见的。但在代码块外不可见。
 
 
@@ -980,6 +980,426 @@ let meetup = JSON.parse(str, function(key, value) {
   return value;
 });
 ```
+
+
+
+# 函数进阶
+
+## 递归和堆栈
+
+### 执行上下文和堆栈
+
+执行上下文在函数调用时产生，包含函数执行时的详细信息
+
+- 函数执行的位置
+- 变量
+- this
+
+执行上下文栈保存还在使用的执行上下文
+
+- 调用函数时，产生执行上下文
+- 函数暂停时，压入执行上下文栈
+- 函数再执行时，从执行上下文栈取出
+
+### 递归
+
+#### 何为递归？
+
+自调用函数
+
+最大的嵌套调用次数（包括首次）被称为 **递归深度**，执行上下文栈中最大上下文数量。
+
+最大递归深度受限于 JavaScript 引擎，栈的大小限制。对我们来说，引擎在最大迭代深度为 10000 及以下时是可靠的，有些引擎可能允许更大的最大深度，但是对于大多数引擎来说，100000 可能就超出限制了。如果超限，会爆出超出最大堆栈深度错误。
+
+#### 递归优化：尾调用
+
+一些引擎支持“尾调用（tail call）”优化：如果递归调用是函数中的最后一个调用，那么外部的函数就不再需要恢复执行，因此引擎也就不再需要记住他的执行上下文。
+
+### 递归和循环
+
+**任何递归都可以用循环来重写**
+
+递归嵌套调用+堆栈管理需要占用资源，导致执行速度变慢。但递归的代码更易读和维护，非重复复杂运算，递归还是能满足需求的。
+
+
+
+## Rest参数 和 扩展运算符
+
+### Rest参数
+
+收集剩余参数到一个数组中
+
+```javascript
+function showName(firstName, lastName, ...titles) {
+  alert( firstName + ' ' + lastName ); // Julius Caesar
+
+  // 剩余的参数被放入 titles 数组中
+  // i.e. titles = ["Consul", "Imperator"]
+  alert( titles[0] ); // Consul
+  alert( titles[1] ); // Imperator
+  alert( titles.length ); // 2
+}
+```
+
+### arguments
+
+- 类数组：无法直接使用数组方法
+- 箭头函数没有arguments
+
+### Spread语法（扩展运算符）
+
+展开**可迭代对象**，内部使用迭代器实现
+
+``` javascript
+let names = ["Happy", "Tim", "Cello"];
+
+alert( [...names] ); // "Happy, Tim, Cello"
+```
+
+可用于Array/Object 浅拷贝，类似于`Object.assign`
+
+
+
+## 闭包
+
+### 词法环境
+
+在 JavaScript 中，每个运行的函数，代码块 `{...}` 以及整个脚本，都有一个被称为 **词法环境（Lexical Environment）** 的内部（隐藏）的关联对象。
+
+在一个函数运行时，在调用刚开始时，会自动创建一个新的词法环境。
+
+词法环境包括
+
+- 环境记录（Environment Record）：存放变量和函数声明的地方，函数声明在词法环境创建时便可用；
+- 外层引用（outer）：提供了访问父词法环境的引用，可能为null，父词法环境指的是函数定义时的环境；
+- this绑定（This Binding）：确定当前环境中this的指向
+
+
+
+#### 外层引用
+
+函数在**定义时**会记住创建它们的词法环境，每个函数都有一个`[[Environment]]`隐藏属性，在函数定义时`[[Environment]]`属性被设置为对外层词法环境的引用。
+
+
+
+#### 作用域链
+
+当代码要访问一个变量时 —— 首先会搜索内部词法环境，然后搜索外部环境，然后搜索更外部的环境，以此类推，直到全局词法环境。
+
+
+
+#### 垃圾收集
+
+在函数调用完成之后，会将词法环境从内存中删除。但是如果有子词法环境引用，仍旧可达，那么函数的词法环境不会被删除。
+
+
+
+### 闭包
+
+#### 什么是闭包？
+
+内部函数总能访问其外部函数中的声明和变量，即使外部函数已经执行完毕。
+
+#### 为什么所有函数都是闭包？
+
+函数会通过`[[Environment]]`隐藏属性存储对外部词法环境的引用，因此所有函数都能访问到其外部环境的声明和变量
+
+#### 实际开发中的优化
+
+**手动优化**
+
+```javascript
+function f() {
+  let value = 123;
+
+  return function() {
+    alert(value);
+  }
+}
+
+let g = f(); // 当 g 函数存在时，该值会被保留在内存中
+
+g = null; // ……现在内存被清理了
+```
+
+**引擎优化**
+
+如果有明显的未使用外部变量，引擎会自动回收。
+
+在调试时，此类变量不可用。理论上应该能访问，但实际情况是引擎做了优化。
+
+```javascript
+function f() {
+  let value = Math.random();
+
+  function g() {
+    debugger; // 在 Console 中：输入 alert(value); No such variable!
+  }
+
+  return g;
+}
+
+let g = f();
+g();
+```
+
+
+
+## var
+
+和`const/let`的区别
+
+- 函数作用域 vs 块作用域
+
+- 声明提前 vs 临时死区
+
+- 全局环境变量，成为全局对象的属性 vs 普通变量
+
+  ``` javascript
+  var gVar = 5;
+  
+  alert(window.gVar); // 5（成为了全局对象的属性）
+  
+  let gLet = 5;
+  
+  alert(window.gLet); // undefined（不会成为全局对象的属性）
+  ```
+
+
+
+## 全局对象
+
+**旧的用法**
+
+浏览器：window
+
+Node.js：global
+
+**新的用法**
+
++ globalThis + polyfill
++ 尽量避免在全局对象上追加属性
++ 设置和访问全局属性时，使用`globalThis.x`
+
+
+
+## 函数对象
+
+在 JavaScript 中，函数就是对象。
+
+- name属性：函数名
+
+- length属性：形参个数，不包括Rest参数
+
+- 自定义属性：在函数对象上追加属性，和函数内部变量没有关系
+
+- 命名函数表达式（NFE）
+
+  ```javascript
+  let sayHi = function func(who) {
+    if (who) {
+      alert(`Hello, ${who}`);
+    } else {
+      func("Guest"); // 现在一切正常
+    }
+  };
+  
+  let welcome = sayHi;
+  sayHi = null;
+  
+  welcome(); // Hello, Guest（嵌套调用有效）
+  ```
+
+  1. sayHi供外部调用
+  2. func属于函数局部作用域，供内部调用
+
+
+
+## "new Function" 语法
+
+### 使用方法
+
+``` javascript
+let func = new Function ([arg1, arg2, ...argN], functionBody);
+
+new Function('a', 'b', 'return a + b'); 
+new Function('a,b', 'return a + b');
+```
+
+### 使用场景
+
+将字符串转变为函数，动态生成函数：模版编译、从服务端获取
+
+### 不能使用外部变量
+
+使用 new Function 创建的函数，它的 [[Environment]] 指向全局词法环境，而不是函数所在的外部词法环境。因此，我们不能在 new Function 中直接使用外部变量。不过这样是好事，这有助于降低我们代码出错的可能。并且，从代码架构上讲，显式地使用参数传值是一种更好的方法，并且避免了与使用压缩程序而产生冲突的问题。
+
+
+
+## setTimeout 和 setInterval
+
+### 使用方法
+
+```javascript
+let timerId = setTimeout(func|code, [delay], [arg1], [arg2], ...)
+clearTimeout(timerId);
+
+let timerId = setInterval(func|code, [delay], [arg1], [arg2], ...)
+clearInterval(timerId)
+```
+
+### 延时
+
+相较于setInterval，setTimeout能更精确地设置延时，`setInterval`的延时，包括执行函数执行的过程，因此执行函数间的时间差是小于设置时间差的。
+
+浏览器会将 setTimeout 或 setInterval 的五层或更多层嵌套调用（调用五次之后）的最小延时限制在 4ms。这是历史遗留问题。
+
+所有的调度方法都不能保证确切的延时，浏览器内的计时器会因以下原因变慢：
+1. CPU过载
+2. 浏览器页签处于后台模式
+3. 电池供电
+
+
+
+## 装饰器和转发
+
+### 装饰者（decorator）
+
+接受一个函数，在保持函数原有行为的行为基础上，添加其他功能但不改变函数。特点：
+
+- 重用
+- 独立逻辑
+- 组合
+
+``` javascript
+function slow(x) {
+  // 这里可能会有重负载的 CPU 密集型工作
+  alert(`Called with ${x}`);
+  return x;
+}
+
+function cachingDecorator(func) {
+  let cache = new Map();
+
+  return function(x) {
+    if (cache.has(x)) {    // 如果缓存中有对应的结果
+      return cache.get(x); // 从缓存中读取结果
+    }
+
+    let result = func(x);  // 否则就调用 func
+
+    cache.set(x, result);  // 然后将结果缓存（记住）下来
+    return result;
+  };
+}
+
+slow = cachingDecorator(slow);
+```
+
+### call和apply
+
+- `func.call(context, arg1, arg2, ...)`，可配合Spread使用
+- `func.apply(context, args);`，接受类数组对象
+
+### 传递多参数
+
+**call forwarding**
+
+将所有参数连同上下文一起传递给另一个函数
+
+``` javascript
+let wrapper = function() {
+  return func.apply(this, arguments);
+};
+```
+
+**method forwarding**
+
+借用其他对象的方法
+
+``` javascript
+[].join.call(arguments)
+```
+
+`arr.join(gule)`的内部算法：
+
+- 让 `glue` 成为第一个参数，如果没有参数，则使用逗号 `","`。
+
+- 让 `result` 为空字符串。
+
+- 将 `this[0]` 附加到 `result`。
+
+- 附加 `glue` 和 `this[1]`。
+
+- 附加 `glue` 和 `this[2]`。
+
+- ……以此类推，直到 `this.length` 项目被粘在一起。
+
+- 返回 `result`。
+
+
+
+## 函数绑定
+
+当将对象方法作为回调进行传递，例如传递给 `setTimeout`，会存在一个常见的问题：“丢失 `this`”。如何解决丢失`this`的问题？
+
+### bind
+
+手动绑定函数词法环境中的`this`
+
+``` javascript
+let user = {
+  firstName: "John",
+  sayHi() {
+    alert(`Hello, ${this.firstName}!`);
+  }
+};
+
+let sayHi = user.sayHi.bind(user); // (*)
+
+// 可以在没有对象（译注：与对象分离）的情况下运行它
+sayHi(); // Hello, John!
+```
+
+**bindAll**
+
+``` javascript
+for (let key in user) {
+  if (typeof user[key] === "function") {
+    user[key] = user[key].bind(this);
+  }
+}
+```
+
+### 偏函数（Partial functions）
+
+在通用函数的基础上，通过设定参数得到另外的功能明确的函数。
+
+`let bound = func.bind(context, [arg1], [arg2], ...);`
+
+- 将上下文绑定为 `this`
+- 绑定函数的起始参数
+- 返回新函数
+
+``` javascript
+function mul(a, b) {
+  return a * b;
+}
+
+let double = mul.bind(null, 2);
+
+alert( double(3) ); // = mul(2, 3) = 6
+alert( double(4) ); // = mul(2, 4) = 8
+alert( double(5) ); // = mul(2, 5) = 10
+```
+
+
+
+
+
+
+
+
 
 
 
