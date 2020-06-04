@@ -1345,7 +1345,11 @@ let wrapper = function() {
 
 ### bind
 
-手动绑定函数词法环境中的`this`
+`func.bind(context, arg1, agr2...)`
+
+本质是返回一个类似函数的exotic object，调用时会把调用传递给`func`并设定`this=context`
+
+表现上类似于手动绑定函数词法环境中的`this`
 
 ``` javascript
 let user = {
@@ -1393,13 +1397,194 @@ alert( double(4) ); // = mul(2, 4) = 8
 alert( double(5) ); // = mul(2, 5) = 10
 ```
 
+**仅设定参数，不绑定this的实现**
+
+``` javascript
+function partial(func, ...argsBound) {
+  return function(...args) { // (*)
+    return func.call(this, ...argsBound, ...args);
+  }
+}
+
+// 用法：
+let user = {
+  firstName: "John",
+  say(time, phrase) {
+    alert(`[${time}] ${this.firstName}: ${phrase}!`);
+  }
+};
+
+// 添加一个带有绑定时间的 partial 方法
+user.sayNow = partial(user.say, new Date().getHours() + ':' + new Date().getMinutes());
+
+user.sayNow("Hello");
+// 类似于这样的一些内容：
+// [10:00] John: Hello!
+```
 
 
 
+## 箭头函数
+
+- 没有`this`
+  - 自身没有`this`，所以去外部词法环境查找`this`，这在需要转发`this`的场景中非常实用
+  - 箭头函数不能用做构造器，不能用`new`调用。因为`new`中的一个步骤是设定`this`
+- 没有`arguments`
+  - 在需要转发`arguments`的场景里使用箭头函数，可以避免定义额外的临时变量
 
 
 
+# 对象属性配置
 
+对象属性分为数据属性和访问器属性两种。
+
+数据属性，顾名思义用以直接存储数据的属性，有`value`
+
+访问器属性，顾名思义可自定义访问方式的属性，有`get/set`
+
+## 数据属性描述符
+
+对象属性除了`value`之外还有三个特性：
+
+- writable - 是否可修改`value`
+- enumerable - 是否可遍历
+- configurable - 是否可删除，是否可修改属性特性
+
+### 获取属性描述符
+
+`let descriptor = Object.getOwnPropertyDescriptor(obj, propertyName);`
+
+获取到**属性描述符**对象
+
+```javascript
+let user = {
+  name: "John"
+};
+
+let descriptor = Object.getOwnPropertyDescriptor(user, 'name');
+
+alert( JSON.stringify(descriptor, null, 2 ) );
+/* 属性描述符：
+{
+  "value": "John",
+  "writable": true,
+  "enumerable": true,
+  "configurable": true
+}
+*/
+```
+
+### 修改属性描述符
+
+`Object.defineProperty(obj, propertyName, descriptor)`
+
+```javascript
+let user = {};
+
+Object.defineProperty(user, "name", {
+  value: "John"
+});
+```
+
+### 手动添加新属性
+
+``` javascript
+let user = { };
+
+Object.defineProperty(user, "name", {
+  value: "John",
+  // 对于新属性，我们需要明确地列出哪些是 true
+  enumerable: true,
+  configurable: true
+});
+
+alert(user.name); // John
+user.name = "Pete"; // Error
+```
+
+### 一次定义多个属性
+
+``` javascript
+Object.defineProperties(user, {
+  name: { value: "John", writable: false },
+  surname: { value: "Smith", writable: false },
+  // ...
+});
+```
+
+### 一次获取所有属性描述符
+
+``` javascript
+Object.getOwnPropertyDescriptors(obj)
+```
+
+搭配`Object.definedProperties`完成对象完全拷贝
+
+``` javascript
+let clone = Object.defineProperties({}, Object.getOwnPropertyDescriptors(obj));
+```
+
+### 快捷方法
+
+- `Object.preventExtensions(obj)` - 禁止添加新属性
+- `Object.seal(obj)` - 禁止添加/删除/修改属性特性。为所有现有的属性设置 `configurable: false`。
+- `Object.freeze(obj)` - 禁止添加/删除/更改属性。为所有现有的属性设置 `configurable: false, writable: false`。
+- `Object.isExtensible(obj)`
+- `Object.isSealed(obj)`
+- `Object.isFrozen(obj)`
+
+## 访问器属性
+
+``` javascript
+let obj = {
+  get propName() {
+    // 当读取 obj.propName 时，getter 起作用
+  },
+
+  set propName(value) {
+    // 当执行 obj.propName = value 操作时，setter 起作用
+  }
+};
+```
+
+### 访问器属性描述符
+
+- **`get`** —— 一个没有参数的函数，在读取属性时工作，
+- **`set`** —— 带有一个参数的函数，当属性被设置时调用，
+- **`enumerable`** —— 与数据属性的相同，
+- **`configurable`** —— 与数据属性的相同。
+
+
+
+# 原型，继承
+
+## 原型继承
+
+### 原型链
+
+对象有一个内部隐藏属性`[[Prototype]]`，为`null`或对另一个对象的引用。通过`[[Prototype]]`形成原型链。
+
+当从对象中读取一个缺失的属性，JavaScript会自动延原型链向上查找。
+
+`__proto__`是`[[Prototype]]`的getter/setter，因历史原因遗留下来，我们仍能通过`obj.__proto__`访问到对象的`[[Prototype]]`
+
+### 赋值操作
+
+赋值操作针对当前对象，并不会对原型产生影响
+
+### 遍历
+
+`for...in...`循环会迭代原型链上的所有属性
+
+可以通过` obj.hasOwnProperty(key)`排除非自身的属性
+
+所有其他键/值获取方法都会忽略继承的属性
+
+### Object.prototye
+
+Dog -> Animal -> Object.prototype -> null
+
+但是Object.prototype中的属性都是不可枚举的，所以在遍历时不会迭代它们
 
 
 
