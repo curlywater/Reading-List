@@ -1580,11 +1580,71 @@ let obj = {
 
 所有其他键/值获取方法都会忽略继承的属性
 
-### Object.prototye
+### Object.prototype
 
-Dog -> Animal -> Object.prototype -> null
+dog -> animal -> Object.prototype -> null
 
 但是Object.prototype中的属性都是不可枚举的，所以在遍历时不会迭代它们
+
+## F.prototype
+
+### new F()
+
+通过`new F()`创建一个对象时，会把对象的`[[Prototype]]`赋值为`F.prototype`
+
+`F.prototype= parentObj`的字面意思：当通过`new F`创建一个对象时，把对象的`[[Prototype]]`赋值为`parentObj`
+
+### constructor属性
+
+每个**函数都有`prototype`属性**，默认的`prototype`是一个只有属性`constructor`的对象，`constructor`指向函数本身。
+
+默认情况下，由`new F()`创建的对象可以通过`[[Prototype]]`访问到指向`F`的`constructor`
+
+![Screen Shot 2020-06-04 at 2.44.59 PM](./assets/prototype.png)
+
+然而，`constructor`可以被任意赋值，因此也就不再可靠
+
+## 原生的原型
+
+### Object.prototype
+
+当 `new Object()` 被调用（或一个字面量对象 `{...}` 被创建），按照前面章节中我们学习过的规则，这个对象的 `[[Prototype]]` 属性被设置为 `Object.prototype`
+
+按照规范，所有的内建原型顶端都是 `Object.prototype`。这就是为什么有人说“一切都从对象继承而来”。
+
+![](./assets/object.prototype.png)
+
+`null` 和 `undefined` 没有对象包装器，没有原型。
+
+内建原型可以被修改或被用新的方法填充。但是不建议更改它们。唯一允许的情况可能是Polyfill，当我们添加一个还没有被 JavaScript 引擎支持，但已经被加入 JavaScript 规范的新标准时，才可能允许这样做。
+
+## 替代`__proto__`
+
+- `Object.create(proto[, descriptors])` - 创建指定`[[Prototype]]`的新对象，同时可为对象添加额外属性
+- `Object.getPrototypeOf(obj)` - 返回对象的`[[Prototype]]`
+- `Object.setPrototypeOf(obj, proto)` - 设置对象的proto
+
+创建“very plain”对象，`obj.prototype === null`
+
+``` javascript
+let obj = Object.create(null);
+```
+
+完全浅拷贝
+
+``` javascript
+let clone = Object.create(Object.getPrototypeOf(obj), Object.getOwnPropertyDescriptors(obj));
+```
+
+> **如果速度很重要，就请不要修改已存在的对象的 `[[Prototype]]`**
+>
+> 从技术上来讲，我们可以在任何时候 get/set `[[Prototype]]`。但是通常我们只在创建对象的时候设置它一次，自那之后不再修改：`rabbit` 继承自 `animal`，之后不再更改。
+>
+> 并且，JavaScript 引擎对此进行了高度优化。用 `Object.setPrototypeOf` 或 `obj.__proto__=` “即时”更改原型是一个非常缓慢的操作，因为它破坏了对象属性访问操作的内部优化。因此，除非你知道自己在做什么，或者 JavaScript 的执行速度对你来说完全不重要，否则请避免使用它。
+
+### 为什么需要替代`__proto__`
+
+`__proto__`是在未出现`Object.getPrototypeof`/`Object.setPrototype`这些方法之前，浏览器预先实现的一种`[[Prototype]]`访问方式。`__proto__`是一个访问器属性，存在用户自定义键名正好为`__proto__`的情况，有可能会意外修改`[[Prototype]]`或者设置键值失败（只接受null和对象）
 
 
 
@@ -1652,4 +1712,4 @@ describe("Raises x to power n", function() { // 分组，描述当前在测试�
 
 新的语言特性包括新的内建函数和语法结构。transpiler会将新的语法结构转换为旧的语法结构。polyfill是用于添加/更新新函数的脚本。polyfill指路[core-js](https://github.com/zloirock/core-js)。
 
-Babel支持transpiler和polyfill，是解决引擎对语言特性支持问题的良药。
+Babel支持transpiler和polyfill，是解决引擎对语言特性支持问题的良药。<!---->
