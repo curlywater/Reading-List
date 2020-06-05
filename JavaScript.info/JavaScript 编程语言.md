@@ -226,6 +226,54 @@ typeof(str); // "string"
 
 
 
+## 空值合并操作符
+
+- `x = a ?? b`，a不为`null`且不为`undefined`时返回b
+
+  相当于`x = (a !== null && a !== undefined) ? a : b;`
+
+- 和`||`的区别：
+  - `||`返回第一个真值
+  - `??`返回第一个已定义值
+
+- 优先级极低，表达式中有其他逻辑时最好使用()包裹
+
+- 不能和AND或OR共用
+
+  ```javascript
+  null || undefined ?? "foo"; // 抛出 SyntaxError
+  // 使用括号来显式表明运算优先级，是没有问题的：
+  (null || undefined ) ?? "foo"; // 返回 "foo"
+  ```
+
+
+
+## 可选链式操作符
+
+``` javascript
+let user = {}; // user has no address
+
+alert( user?.address?.street ); // undefined (no error)
+```
+
+如果对象链上的引用是`nullish(null或者undefined)`，`?.`会按照短路的方式处理，返回`undefined`
+
+``` javascript
+obj?.prop
+obj?.[expr]
+arr?.[index]
+func?.(args)
+```
+
+不能用于赋值
+
+``` javascript
+let object = {};
+object?.property = 1; // Uncaught SyntaxError: Invalid left-hand side in assignment
+```
+
+
+
 ## 函数
 
 - 函数表达式在代码执行到达时被创建，并且仅从那一刻起可用。
@@ -1430,7 +1478,10 @@ user.sayNow("Hello");
   - 自身没有`this`，所以去外部词法环境查找`this`，这在需要转发`this`的场景中非常实用
   - 箭头函数不能用做构造器，不能用`new`调用。因为`new`中的一个步骤是设定`this`
 - 没有`arguments`
+  - 从外部函数获取
   - 在需要转发`arguments`的场景里使用箭头函数，可以避免定义额外的临时变量
+- 没有`super`
+  - 从外部函数获取
 
 
 
@@ -1648,6 +1699,531 @@ let clone = Object.create(Object.getPrototypeOf(obj), Object.getOwnPropertyDescr
 
 
 
+# 类
+
+## Class基本语法
+
+### 语法
+
+基本的类语法看起来像这样：
+
+```javascript
+class MyClass {
+  prop = value; // 类属性
+
+  constructor(...) { // 构造器
+    // ...
+  }
+
+  method(...) {} // method
+
+  get something(...) {} // getter 方法
+  set something(...) {} // setter 方法
+
+  [Symbol.iterator]() {} // 有计算名称（computed name）的方法（此处为 symbol）
+  // ...
+}
+```
+
+### 本质
+
+技术上来说，`MyClass` 是一个函数，函数内部是`constructor`的内容，`methods`、`getters` 和 `setters` 都被写入了 `MyClass.prototype`。
+
+``` javascript
+// class User
+class User {
+  constructor (name) {
+    this.name = name;
+  }
+  sayHi () {
+    alert(this.name);
+  }
+}
+```
+
+``` javascript
+// 用纯函数重写 class User
+
+// 1. 创建构造器函数
+function User(name) {
+  this.name = name;
+}
+// 任何函数原型默认都具有构造器属性，
+// 所以，我们不需要创建它
+
+// 2. 将方法添加到原型
+User.prototype.sayHi = function() {
+  alert(this.name);
+};
+
+// 用法：
+let user = new User("John");
+user.sayHi();
+```
+
+纯函数定义的类和使用`Class`定义的类有一些差异：
+
+- 通过 `class` 创建的函数具有特殊的内部属性标记 `[[FunctionKind]]:"classConstructor"`，调用类构造器时必须要用 `new` 关键词
+- 类方法不可枚举，`enumerable`标志设置为`false`；在`for...in...`中类方法不会出现
+- 类总是使用 `use strict`。
+
+### 类表达式
+
+``` javascript
+let User = class {
+  sayHi() {
+    alert("Hello");
+  }
+};
+```
+
+类似于NFE，也有命名类表达式。
+
+### 类字段
+
+``` javascript
+class Button {
+  name = "button"
+}
+```
+
+在对象上添加属性。
+
+### 绑定this
+
+#### 使用`bind`
+
+``` javascript
+class Button {
+  constructor(value) {
+    this.value = value;
+    this.click = this.click.bind(this);
+  }
+
+  click() {
+    alert(this.value);
+  }
+}
+```
+
+`click`是在`prototype`上的一个函数，通过`bind`在对象上添加一个额外对象`click`（转发调用给`click`方法，设置上下文为`this`）
+
+#### 使用类字段
+
+``` javascript
+class Button {
+  constructor(value) {
+    this.value = value;
+  }
+  click = () => {
+    alert(this.value);
+  }
+}
+```
+
+`click`是在对象上直接添加的方法，并额外把`this`绑定到该对象上
+
+## 类继承
+
+``` javascript
+class Child extends Parent {}
+```
+
+### 本质
+
+连接原型：`Child.prototype`的`[[Prototype]]`指向`Parent.prototype`
+
+获取静态方法：`Child.__proto__ === Parent`
+
+
+
+通过`new Child()`得到一个对象时，会调用`Parent`的`constructor`，并将对象`[[Prototype]]`指向`Child.prototype`
+
+### 重写
+
+#### 重写constructor
+
+那么，如果`Child`中重写`constructor`，`Parent`中的属性是否无法得到继承？因此，规定`Child`的`constructor`中必须通过`super()`调用`Parent`的`constructor`
+
+还有强制要求的一点是`super()`一定要在使用`this`之前调用，原因如下：
+
+> 派生构造器具有特殊的内部属性 `[[ConstructorKind]]:"derived"`。这是一个特殊的内部标签。
+>
+> 该标签会影响它的 `new` 行为：
+>
+> - 当通过 `new` 执行一个常规函数时，它将创建一个空对象，并将这个空对象赋值给 `this`。
+> - 但是当继承的 `constructor` 执行时，它不会执行此操作。它期望父类的 `constructor` 来完成这项工作。
+
+#### 重写方法
+
+执行 `super.method(...)` 来调用一个父类方法。
+
+如果通过`this.__proto__.method.call(this)`实现，会一直循环执行第一次调用。
+
+JavaScript 为函数添加了一个特殊的内部属性：`[[HomeObject]]`，当一个函数被定义为类或者对象方法时，它的 `[[HomeObject]]` 属性就成为了该对象。`super`会借助`[[HomeObject]]`找到原型以及原型上的方法`super.method()`实际上做的是`method.[[HomeObject]].method.call(this)`
+
+- 方法在内部的 `[[HomeObject]]` 属性中记住了它们的类/对象。这就是 `super` 如何解析父方法的。
+- 因此，将一个带有 `super` 的方法从一个对象复制到另一个对象是不安全的。
+
+## 静态属性和静态方法
+
+``` javascript
+class User {
+  static staticMethod() {
+    alert(this === User);
+  }
+  static staticProperty = "Property"
+}
+
+User.staticMethod(); // true
+```
+
+给函数对象添加属性/方法
+
+### 应用
+
+属于类的方法，不属于类的特定对象
+
+```javascript
+class Article {
+  constructor(title, date) {
+    this.title = title;
+    this.date = date;
+  }
+
+  static compare(articleA, articleB) {
+    return articleA.date - articleB.date;
+  }
+}
+
+// 用法
+let articles = [
+  new Article("HTML", new Date(2019, 1, 1)),
+  new Article("CSS", new Date(2019, 0, 1)),
+  new Article("JavaScript", new Date(2019, 11, 1))
+];
+
+articles.sort(Article.compare);
+
+alert( articles[0].title ); // CSS
+```
+
+工厂方法
+
+``` javascript
+class Article {
+  constructor(title, date) {
+    this.title = title;
+    this.date = date;
+  }
+
+  static createTodays() {
+    // 记住 this = Article
+    return new this("Today's digest", new Date());
+  }
+}
+
+let article = Article.createTodays();
+
+alert( article.title ); // Today's digest
+```
+
+### 继承
+
+`extends` 让 `Child` 的 `[[Prototype]]` 指向了 `Parent`
+
+继承做了两件事：
+
+```javascript
+Child.__proto__ === Parent; // true
+Child.prototype.__proto__ === Parent.prototype); // true
+```
+
+## 私有属性和方法
+
+### 人工规范
+
+- 属性名/方法名使用下划线开头
+- 配合一个getter/setter访问器属性
+- 或者使用`get...`/`set...`方法
+
+### 私有语法
+
+**目前JavaScript尚未支持，需要配合polyfill使用**
+
+私有属性和方法应该以 `#` 开头
+
+``` javascript
+class CoffeeMachine {
+  #waterLimit = 200;
+
+  #checkWater(value) {
+    if (value < 0) throw new Error("Negative water");
+    if (value > this.#waterLimit) throw new Error("Too much water");
+  }
+
+  get waterAmount() {
+    return this.#waterAmount;
+  }
+
+  set waterAmount(value) {
+    if (value < 0) throw new Error("Negative water");
+    this.#waterAmount = value;
+  }
+}
+```
+
+**注意**
+
+- 继承的子类中无法直接访问/操作私有属性，只能通过访问器属性进行
+- 私有属性无法通过`this[name]`访问，为了确保私有性，`this['#name']`不起作用
+
+## 扩展内建类
+
+### 扩展内建类
+
+扩展类调用内建方法返回的的对象继承自扩展类
+
+内建方法通过类的静态getter`Symbol.species`获取`constructor`
+
+``` javascript
+class PowerArray extends Array {
+  isEmpty() {
+    return this.length === 0;
+  }
+
+  // 内建方法将使用这个作为 constructor
+  static get [Symbol.species]() {
+    return Array;
+  }
+}
+
+let arr = new PowerArray(1, 2, 5, 10, 50);
+alert(arr.isEmpty()); // false
+
+// filter 使用 arr.constructor[Symbol.species] 作为 constructor 创建新数组
+let filteredArr = arr.filter(item => item >= 10);
+
+// filteredArr 不是 PowerArray，而是 Array
+alert(filteredArr.isEmpty()); // Error: filteredArr.isEmpty is not a function
+```
+
+### 内建类没有静态方法继承
+
+`Array.__proto__`,`Date.__proto__`并不指向`Object.prototype`
+
+只是继承原型链
+
+
+
+## 类检查
+
+### instanceof
+
+`instanceof` 操作符用于检查一个对象是否属于某个特定的 class。
+
+`obj instanceof Class`的执行过程：
+
+- Class是否有静态方法`Symbol.hasInstance`，有就直接调用方法，没有就走下步
+
+- 检查 `Class.prototype` 是否等于 `obj` 的原型链中的原型之一
+
+  ``` javascript
+  obj.__proto__ === Class.prototype?
+  obj.__proto__.__proto__ === Class.prototype?
+  obj.__proto__.__proto__.__proto__ === Class.prototype?
+  ```
+
+### objA.isPrototypeOf(objB)
+
+如果 `objA` 处在 `objB` 的原型链中，则返回 `true`
+
+`Class.isPrototypeOf(obj) === obj instanceof Class`
+
+###Object.prototype.toString()妙用
+
+`Object.prototype.toString`的算法会检查`this`
+
+``` javascript
+// 它是什么类型的？
+let arr = [];
+
+alert( {}.toString.call(arr) ); // [object Array]
+```
+
+- 对于 `number` 类型，结果是 `[object Number]`
+- 对于 `boolean` 类型，结果是 `[object Boolean]`
+- 对于 `null`：`[object Null]`
+- 对于 `undefined`：`[object Undefined]`
+- 对于数组：`[object Array]`
+
+可以通过`Symbol.toStringTag`自定义应对`toString`方法时的返回值
+
+``` javascript
+let user = {
+  [Symbol.toStringTag]: "User"
+};
+
+alert( {}.toString.call(user) ); // [object User]
+```
+
+
+
+让我们总结一下我们知道的类型检查方法：
+
+|               | 用于                                                         | 返回值     |
+| :------------ | :----------------------------------------------------------- | :--------- |
+| `typeof`      | 原始数据类型                                                 | string     |
+| `{}.toString` | 原始数据类型，内建对象，包含 `Symbol.toStringTag` 属性的对象 | string     |
+| `instanceof`  | 对象                                                         | true/false |
+
+## Mixin模式
+
+- 类似于TS中的接口，封装好特定方法的对象，通过`Object.assign`将对象內的方法附加到类上
+- 利用对象方法中`super`对`[[HomeObject]]`的依赖特性，可以达到Mixin内部继承的功能
+
+``` javascript
+let sayMixin = {
+  say(phrase) {
+    alert(phrase);
+  }
+};
+
+let sayHiMixin = {
+  __proto__: sayMixin, // (或者，我们可以在这儿使用 Object.create 来设置原型)
+
+  sayHi() {
+    // 调用父类方法
+    super.say(`Hello ${this.name}`); // (*)
+  },
+  sayBye() {
+    super.say(`Bye ${this.name}`); // (*)
+  }
+};
+
+class User {
+  constructor(name) {
+    this.name = name;
+  }
+}
+
+// 拷贝方法
+Object.assign(User.prototype, sayHiMixin);
+
+// 现在 User 可以打招呼了
+new User("Dude").sayHi(); // Hello Dude!
+```
+
+
+
+# 错误处理
+
+## "try...catch...finally"
+
+``` javascript
+try {
+  // your code
+} catch (err) {
+  // err is an Error Object
+} finally {
+	// exec the code no matter try or catch
+}
+```
+
+- `try...catch...`处理的是代码运行时的错误，词法分析阶段的语法错误将直接导致程序无法启动
+- `catch`的`err`部分可省略，但这是新的语法更新，需要增加polyfill使用
+- `catch`部分可以省略，写为`try...finally`的形式，应用于任何情况下`finally`收尾工作都能进行
+- `finally`的功能是确保代码不受`try...catch...`中代码出口(`return`/`throw`)的影响都能执行
+
+### Error Object
+
+包含属性
+
+- name - 错误名称，构造器的名称
+- message - 描述信息
+- stack - 调用栈
+
+`Error.prototype.toString()`返回的是`"name: message"`
+
+``` javascript
+try {
+  throw new ReferenceError("lalala is not defined")
+} catch(err) {
+  alert(err.name); // ReferenceError
+  alert(err.message); // lalala is not defined
+  alert(err.stack); // ReferenceError: lalala is not defined at (...call stack)
+
+  // 也可以将一个 error 作为整体显示出来as a whole
+  // Error 信息被转换为像 "name: message" 这样的字符串
+  alert(err); // ReferenceError: lalala is not defined
+}
+```
+
+### throw
+
+手动抛出异常
+
+- 在`try`中`throw`的任何异常在`catch`中被捕获
+- 在`catch`中，如果有只处理指定错误的需求，可根据错误信息将不在这处理的错误二次抛出，抛出的异常将被外层`catch`捕获
+
+## 自定义Error
+
+``` javascript
+// JavaScript 自身定义的内建的 Error 类的“伪代码”
+class Error {
+  constructor(message) {
+    this.message = message;
+    this.name = "Error"; // (不同的内建 error 类有不同的名字)
+    this.stack = <call stack>; // 非标准的，但大多数环境都支持它
+  }
+}
+```
+
+自定义Error示例代码：
+
+``` javascript
+class MyError extends Error {
+  constructor(message) {
+    super(message);
+    // function的constructor指向自身，function.name == functionName
+    this.name = this.constructor.name;
+  }
+}
+
+class ValidationError extends MyError { }
+
+class PropertyRequiredError extends ValidationError {
+  constructor(property) {
+    super("No property: " + property);
+    this.property = property;
+  }
+}
+
+class PropertyInValidError extends ValidationError {
+  constructor(property, rule) {
+    super("property invalid: " + property + " need be " + rule);
+    this.property = property;
+    this.rule = rule;
+  }
+}
+
+try {
+	throw new PropertyRequiredError("age");
+  throw new PropertyInValidError("name", "more than 8 characters");
+} catch (err) {
+  // 使用instanceof可以达到高层级处理的效果
+  if (err instanceof ValidationError) {
+    alert("Invalid data: " + err.message); 
+  } else if (err instanceof SyntaxError) { 
+    alert("JSON Syntax Error: " + err.message);
+  } else {
+    throw err; 
+  }
+}
+```
+
+
+
 # 代码质量
 
 ## 在Chrome中调试
@@ -1705,6 +2281,10 @@ describe("Raises x to power n", function() { // 分组，描述当前在测试�
   });
 });
 ```
+
+
+
+
 
 ## Polyfill
 
