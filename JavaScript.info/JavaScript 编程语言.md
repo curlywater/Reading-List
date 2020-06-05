@@ -2134,6 +2134,7 @@ try {
 - `catch`的`err`部分可省略，但这是新的语法更新，需要增加polyfill使用
 - `catch`部分可以省略，写为`try...finally`的形式，应用于任何情况下`finally`收尾工作都能进行
 - `finally`的功能是确保代码不受`try...catch...`中代码出口(`return`/`throw`)的影响都能执行
+- 错误处理是同步的行为，如果`try`中的异步代码抛出错误，将无法被捕获
 
 ### Error Object
 
@@ -2221,6 +2222,335 @@ try {
   }
 }
 ```
+
+
+
+# Promise
+
+## Promise
+
+避免“回调地狱”的最佳方案
+
+示例代码如下：
+
+``` javascript
+let promise = new Promise(function (resolve, reject) {
+	if (...) {
+  	resolve(value);    	
+  } else {
+		reject(err);
+	}
+})
+```
+
+- `promise`对象通过Promise构造器生成
+- `new Promise`的参数是一个函数，称之为执行器，执行器接受的两个参数`resolve/reject`是JS内部提供的函数
+- 创建`promise`对象时，执行器会自动运行并尝试执行一项工作。
+- 调用`resolve`函数通知`promise`工作执行成功
+- 调用`reject`函数通知`promise`工作执行失败
+
+`promise`对象内部包含`state`和`result`属性，对应以下三种状态：
+
+- 未执行完毕：`pending/undefined`
+- resolved: `fulfilled/value`
+- rejected: `rejected/error`
+
+`promise`对象的状态一旦更改变不可再更改，处于`resolved/rejected`状态的`promise`被称为`settled`
+
+###消费者，then,catch,finally
+
+执行器类似于生产者，`promise`对象为生产者和消费者提供连接，通过`then/catch/finally`来注册消费者的监听，以便消费者及时获得生产者产出的`value/error`
+
+#### then
+
+``` javascript
+promise.then(
+  function(result) { /* handle a successful result */ },
+  function(error) { /* handle an error */ }
+);
+```
+
+#### catch
+
+``` javascript
+let promise = new Promise(resolve => {
+  setTimeout(() => resolve("done!"), 1000);
+});
+
+promise.then(value => a, alert).catch(err => console.log(err))
+```
+
+- 如果`then`中存在`reject`监听，那么`rejected promise`的错误信息将交给`reject`处理，不会传递到`catch`
+
+#### finally
+
+``` javascript
+new Promise((resolve, reject) => {
+  /* 做一些需要时间的事儿，然后调用 resolve/reject */
+})
+  // 在 promise 被 settled 时运行，无论成功与否
+  .finally(() => stop loading indicator)
+  .then(result => show result, err => show error)
+```
+
+- `finally`没有参数，在`finally`中无法知道`promise`的处理结果
+- `finally`会将`promise`的结果直接传递下去
+- `finally`并不会默认最后执行，上述代码`finally`会在`then`之前执行
+
+**如果结果已经存在，新注册的消费会立即获得结果并执行代码**
+
+``` javascript
+let promise = new Promise(resolve => resolve("done!"));
+
+setTimeout(() => {promise.then(alert);}, 1000)
+
+```
+
+## Promise链
+
+``` javascript
+new Promise(function(resolve, reject) {
+
+  setTimeout(() => resolve(1), 1000); // (*)
+
+}).then(function(result) { // (**)
+
+  alert(result); // 1
+  return result * 2;
+
+});
+```
+
+对 `promise.then` 的调用会返回一个 `promise`，所以我们可以在其之上调用下一个 `.then`。
+
+当处理程序（handler）返回一个值时，它将成为该 promise 的 result，所以将使用它调用下一个 `.then`。
+
+`then`中可以创建并返回新的`promise`，下一个`then`将等待新的`promise`settled之后执行。
+
+## 错误处理
+
+`.then` 将 `result/error` 传递给下一个 `.then/.catch`。error包括`resolve/reject`中出现的异常。
+
+### 内部实现：隐式try...catch
+
+在 `executor/handler` 周围的“隐式 `try..catch`”自动捕获了 error，并将其变为 rejected promise。
+
+### catch
+
+`catch`处理后`promise`的结果变为`resolved/undefined`，传递给下一个`.then/.catch`
+
+### unhandledrejection
+
+> 当[`Promise`](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Promise) 被 reject 且没有 reject 处理器的时候，会触发 **`unhandledrejection`** 事件；这可能发生在 [`window`](https://developer.mozilla.org/zh-CN/docs/Web/API/Window) 下，但也可能发生在 [`Worker`](https://developer.mozilla.org/zh-CN/docs/Web/API/Worker) 中。 这对于调试回退错误处理非常有用。
+
+``` javascript
+window.addEventListener('unhandledrejection', function(event) {
+  // 这个事件对象有两个特殊的属性：
+  alert(event.promise); // [object Promise] - 生成该全局 error 的 promise
+  alert(event.reason); // Error: Whoops! - 未处理的 error 对象
+});
+```
+
+## Promise API
+
+`Promise`的五类静态方法
+
+### Promise.all(iterable)
+
+并行执行多个 promise，并等待所有promise resolved 或者  某个promise rejected
+
+``` javascript
+let names = ['iliakan', 'remy', 'jeresig'];
+
+let requests = names.map(name => fetch(`https://api.github.com/users/${name}`));
+
+Promise.all(requests)
+  .then(responses => {
+    // 所有响应都被成功 resolved
+    for(let response of responses) {
+      alert(`${response.url}: ${response.status}`); // 对应每个 url 都显示 200
+    }
+
+    return responses;
+  })
+  // 将响应数组映射（map）到 response.json() 数组中以读取它们的内容
+  .then(responses => Promise.all(responses.map(r => r.json())))
+  // 所有 JSON 结果都被解析："users" 是它们的数组
+  .then(users => users.forEach(user => alert(user.name)));
+```
+
+- `iterable`中允许传入`non-promise`值，值将被直接传递给结果序列
+- 所有`promise`的`executor`并行自动执行，当其中一个`promise rejected`，其他promise将会抛弃executor的结果，将`rejected promise`的结果传递下去
+
+### Promise.allSettled
+
+最近加入的语法，需要polyfill
+
+等待所有的 promise 都被 settle，传递所有promise的结果序列给handler
+
+``` javascript
+let urls = [
+  'https://api.github.com/users/iliakan',
+  'https://api.github.com/users/remy',
+  'https://no-such-url'
+];
+
+Promise.allSettled(urls.map(url => fetch(url)))
+  .then(results => { // (*)
+    results.forEach((result, num) => {
+      if (result.status == "fulfilled") {
+        alert(`${urls[num]}: ${result.value.status}`);
+      }
+      if (result.status == "rejected") {
+        alert(`${urls[num]}: ${result.reason}`);
+      }
+    });
+  });
+```
+
+Polyfill的实现
+
+``` javascript
+if(!Promise.allSettled) {
+  Promise.allSettled = function(promises) {
+    return Promise.all(promises.map(p => Promise.resolve(p).then(value => ({
+      state: 'fulfilled',
+      value
+    }), reason => ({
+      state: 'rejected',
+      reason
+    }))));
+  };
+}
+```
+
+### Promise.race
+
+等待第一个 settled 的 promise 并获取其结果
+
+``` javascript
+Promise.race([
+  new Promise((resolve, reject) => setTimeout(() => resolve(1), 1000)),
+  new Promise((resolve, reject) => setTimeout(() => reject(new Error("Whoops!")), 2000)),
+  new Promise((resolve, reject) => setTimeout(() => resolve(3), 3000))
+]).then(alert); // 1
+```
+
+### Promise.resolve
+
+`Promise.resolve(value)` 用结果 `value` 创建一个 resolved 的 promise。在结果外封装一层promise
+
+``` javascript
+let cache = new Map();
+
+function loadCached(url) {
+  if (cache.has(url)) {
+    return Promise.resolve(cache.get(url)); // (*)
+  }
+
+  return fetch(url)
+    .then(response => response.text())
+    .then(text => {
+      cache.set(url,text);
+      return text;
+    });
+}
+```
+
+### Promise.reject
+
+`Promise.reject(error)` 用 `error` 创建一个 rejected 的 promise。
+
+## Promisification
+
+将一个接受回调的函数转换为一个返回 promise 的函数。
+
+``` javascript
+// 支持多参数
+function promisify(f, manyArgs = false) {
+  return function (...args) {
+    return new Promise((resolve, reject) => {
+      function callback(err, ...results) { // 我们自定义的 f 的回调
+        if (err) {
+          reject(err);
+        } else {
+          // 如果 manyArgs 被指定，则使用所有回调的结果 resolve
+          resolve(manyArgs ? results : results[0]);
+        }
+      }
+
+      args.push(callback);
+
+      f.call(this, ...args);
+    });
+  };
+};
+
+// 用法：
+f = promisify(f, true);
+f(...).then(arrayOfResults => ..., err => ...)
+```
+
+有一些具有更灵活一点的 promisification 函数的模块（module），例如 [es6-promisify](https://github.com/digitaldesignlabs/es6-promisify)。在 Node.js 中，有一个内建的 promisify 函数 `util.promisify`。
+
+## 微任务
+
+异步任务需要适当的管理。为此，ECMA 标准规定了一个内部队列 `PromiseJobs`，通常被称为“微任务队列（microtask queue）”（ES8 术语）。
+
+- 队列（queue）是先进先出的：首先进入队列的任务会首先运行。
+- 只有在 JavaScript 引擎中没有其它任务在运行时，才开始执行任务队列中的任务。
+
+## async/await
+
+Promise的语法糖
+
+### async
+
+在函数前面的 “async” 这个单词表达了一个简单的事情：即这个函数总是返回一个 promise。非Promise的值将自动被包装在一个 resolved 的 promise 中。
+
+### await
+
+await只在async內工作，在普通函数中调用将会报语法错误
+
+await后跟随一个thenable对象
+
+关键字 `await` 让 JavaScript 引擎等待直到 promise 完成（settle）并返回结果。
+
+``` javascript
+async function showAvatar() {
+
+  // 读取我们的 JSON
+  let response = await fetch('/article/promise-chaining/user.json');
+  let user = await response.json();
+
+  // 读取 github 用户信息
+  let githubResponse = await fetch(`https://api.github.com/users/${user.name}`);
+  let githubUser = await githubResponse.json();
+
+  // 显示头像
+  let img = document.createElement('img');
+  img.src = githubUser.avatar_url;
+  img.className = "promise-avatar-example";
+  document.body.append(img);
+
+  // 等待 3 秒
+  await new Promise((resolve, reject) => setTimeout(resolve, 3000));
+
+  img.remove();
+
+  return githubUser;
+}
+
+showAvatar();
+```
+
+### 错误处理
+
+如果 promise 被 reject，它将 throw 这个 error，就像在这一行有一个 `throw` 语句那样。
+
+在函数块內使用`try...catch`包裹
+
+或者在外层使用`.catch`处理
 
 
 
