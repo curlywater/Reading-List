@@ -1663,7 +1663,7 @@ dog -> animal -> Object.prototype -> null
 
 按照规范，所有的内建原型顶端都是 `Object.prototype`。这就是为什么有人说“一切都从对象继承而来”。
 
-![](./assets/object.prototype.png)
+![](./assets/Object.prototype.png)
 
 `null` 和 `undefined` 没有对象包装器，没有原型。
 
@@ -2551,6 +2551,240 @@ showAvatar();
 在函数块內使用`try...catch`包裹
 
 或者在外层使用`.catch`处理
+
+
+
+# Generator, 高级iteration
+
+## Generator
+
+`Generator`函数调用的时候，不会运行函数块內代码，而是返回一个`generator`对象。
+
+``` JavaScript
+function* generateSequence () {
+  yield 1;
+  yield 2;
+  return 3;
+}
+```
+
+`javascript`代码中的`*`表示当前是一个`Generator`函数，描述函数的种类而不是名称。
+
+### generator是可迭代的
+
+`generator.next()`恢复`generator`函数块內代码执行，执行到最近的`yield`语句，并且返回`{value:.., done:...}`对象：
+
+- `value`: 产出的（yielded）的值。
+- `done`: 如果 generator 函数已执行完成则为 `true`，否则为 `false`。
+
+``` javascript
+let generator = generateSequence();
+
+let one = generator.next();
+
+alert(JSON.stringify(one)); // {value: 1, done: false}
+```
+
+如果返回对象的`done`值为`true`，依赖迭代器的JavaScript内建工具将会忽视返回对象的`value`，要让所有值被变量到，需要改写上述方法
+
+``` javascript
+function* generateSequence() {
+  yield 1;
+  yield 2;
+  yield 3;
+}
+
+let generator = generateSequence();
+
+for(let value of generator) {
+  alert(value); // 1，然后是 2，然后是 3
+}
+```
+
+### 自建可迭代对象
+
+``` javascript
+let range = {
+  from: 1,
+  to: 5,
+
+  *[Symbol.iterator]() { // [Symbol.iterator]: function*() 的简写形式
+    for(let value = this.from; value <= this.to; value++) {
+      yield value;
+    }
+  }
+};
+
+alert( [...range] ); // 1,2,3,4,5
+```
+
+### Generator 组合
+
+`yield* generator`将执行转交给给另一个`generator`，是将一个`generator`流插入到另一个`generator`流的自然方式，不需要额外的内存空间消耗。
+
+``` javascript
+function* generateSequence(start, end) {
+  for (let i = start; i <= end; i++) yield i;
+}
+
+function* generatePasswordCodes() {
+
+  // 0..9
+  yield* generateSequence(48, 57);
+
+  // A..Z
+  yield* generateSequence(65, 90);
+
+}
+
+let str = '';
+
+for(let code of generatePasswordCodes()) {
+  str += String.fromCharCode(code);
+}
+
+alert(str); // 0..9A..Za..z
+```
+
+### next()传值
+
+`yield`是一条双向路，可以向`generator`外部传递值，也可以通过`next(value)`赋值给`yield`的结果
+
+``` javascript
+function* generator () {
+  const defaultResult = yield "Hello";
+  console.log(defaultResult);
+  
+	const result = yield "Hello";
+  console.log(result);
+}
+
+const g = generator();
+g.next(); // 执行第一个yield并停住
+g.next(1);// 将参数作为第一个yield的执行结果赋值给defaultResult，执行第二个yield并停住
+```
+
+### generator.throw
+
+向`yield`传递一个错误
+
+``` javascript
+function* gen() {
+  try {
+    let result = yield "2 + 2 = ?"; // (1)
+
+    alert("The execution does not reach here, because the exception is thrown above");
+  } catch(e) {
+    alert(e); // 显示这个 error
+  }
+}
+
+let generator = gen();
+
+let question = generator.next().value;
+
+generator.throw(new Error("The answer is not found in my database")); // (2)
+```
+
+## Async iterator 和 generator
+
+### Async iterator
+
+异步迭代器：
+
+1. 使用 `Symbol.asyncIterator` 取代 `Symbol.iterator`
+2. `next()` 方法应该返回一个 `promise`。配合复杂逻辑使用`async/await`可读性更高
+3. 使用 `for await (let item of iterable)` 循环来迭代这样的对象
+
+``` javascript
+let range = {
+  from: 1,
+  to: 5,
+  [Symbol.asyncIterator]() { // (1)
+    return {
+      current: this.from,
+      last: this.to,
+
+      // for await..of 循环在每次迭代时都会调用 next()
+      async next() { // (2)
+        // 它应该以对象 {done:.., value :...} 的形式返回值
+        // (会被 async 自动包装成一个 promise)
+
+        // 可以在内部使用 await，执行异步任务：
+        await new Promise(resolve => setTimeout(resolve, 1000)); // (3)
+
+        if (this.current <= this.last) {
+          return { done: false, value: this.current++ };
+        } else {
+          return { done: true };
+        }
+      }
+    };
+  }
+};
+
+(async () => {
+
+  for await (let value of range) { // (4)
+    alert(value); // 1,2,3,4,5
+  }
+
+})()
+```
+
+需要依赖`Symbol.iterator`的功能将无法使用，比如Spread语法
+
+### Async generator
+
+``` javascript
+async function* generateSequence(start, end) {
+
+  for (let i = start; i <= end; i++) {
+
+    // 耶，可以使用 await 了！
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    yield i;
+  }
+
+}
+
+(async () => {
+
+  let generator = generateSequence(1, 5);
+  for await (let value of generator) {
+    alert(value); // 1，然后 2，然后 3，然后 4，然后 5
+  }
+
+})();
+```
+
+使用`generator`代替普通`async iterator`，`generator` + `async iterator` 的混合体
+
+``` javascript
+let range = {
+  from: 1,
+  to: 5,
+
+  async *[Symbol.asyncIterator]() { // 等价于 [Symbol.asyncIterator]: async function*()
+    for(let value = this.from; value <= this.to; value++) {
+
+      // 在 value 之间暂停一会儿，等待一些东西
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      yield value;
+    }
+  }
+};
+
+(async () => {
+
+  for await (let value of range) {
+    alert(value); // 1，然后 2，然后 3，然后 4，然后 5
+  }
+
+})();
+```
 
 
 
