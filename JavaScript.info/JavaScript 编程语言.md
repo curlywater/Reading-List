@@ -177,7 +177,7 @@ typeof(str); // "string"
 
 - 发生在逻辑操作时
 - 显式转换：`Boolean(value)`
-  - 0, null, undefined, NaN, "" -> false
+  - 0, `null`,` undefined`,` NaN`,` ""` -> false
   - 其他 -> true
 
 
@@ -203,14 +203,14 @@ typeof(str); // "string"
 
   - 转换为**数字类型**再进行比较，例如`"1" > false`
 
-  - **特殊的：** 相等比较时，null和undefined不会进行类型转换，因此
+  - **特殊的：** 相等比较时，`null`和`undefined`不会进行类型转换，因此
 
     ```javascript
     null == undefined // true
     null == 0 // false
     ```
 
-  - **再特殊的：** 严格相等比较时，不会进行类型转换么，因此
+  - **再特殊的：** 严格相等比较时，不会进行类型转换，因此
 
     ```javascript
     null === undefined // false
@@ -3004,6 +3004,309 @@ bye('John'); // Bye, John!
 
 
 
+# 杂项
+
+## Proxy 和 Reflect
+
+### Proxy
+
+Proxy是对象的包装器，将代理上的操作转发给对象，并且可以捕获其中的一些操作。
+
+proxy是一种特殊的外来对象，没有自己的属性，在没有操作对应`trap`的情况下会将操作转发给对象本体。
+
+``` javascript
+let proxy = new Proxy(target, {
+  // traps
+})
+```
+
+- `target`可以是任意对象，`array/function`...都可以
+
+### Get
+
+拦截读取操作
+
+``` javascript
+new Proxy(target, {
+  get(target, prop, receiver) {
+    // target - 目标对象
+    // prop - 目标属性名
+    // receriver - 与getter访问属性相关
+  }
+})
+```
+
+```javascript
+// 实例：字符串翻译
+let dictionary = {
+  'Hello': 'Hola',
+  'Bye': 'Adiós'
+};
+
+dictonary = new Proxy(dictionary, {
+  get(target, phrase) {
+    if (phrase in target) {
+      return target[phrase];
+    } else {
+      return phrase;
+    }
+  }
+});
+
+alert( dictionary['Hello'] ); // Hola
+alert( dictionary['Welcome to Proxy']); // Welcome to Proxy（没有被翻译）
+```
+
+### Set
+
+拦截写入操作
+
+``` javascript
+let proxy = new Proxy(target, {
+  set(target, prop, value, receiver) {
+    // targte - 目标对象
+    // prop - 目标属性名
+    // value - 值
+    // receiver - 与setter访问属性有关
+    return true; // 操作成功必须返回true，操作失败返回false抛出TypeError
+  }
+})；
+```
+
+``` javascript
+// 实例：写入数值数组
+let numbers = [];
+numbers = new Proxy(numbers, {
+  set(target, prop, value) {
+    if (typeof value === "number") {
+      target[prop] = value;
+      return true;
+    } else {
+      return false;
+    }
+  }
+})
+```
+
+### OwnPropertyKeys & GetOwnProperty
+
+拦截读取对象本身的所有属性键 & 读取对象属性的描述符
+
+| 内部方法              | Handler 方法               | 何时触发                                                     |
+| --------------------- | -------------------------- | ------------------------------------------------------------ |
+| `[[GetOwnProperty]]`  | `getOwnPropertyDescriptor` | [Object.getOwnPropertyDescriptor](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/getOwnPropertyDescriptor), `for..in`, `Object.keys/values/entries` |
+| `[[OwnPropertyKeys]]` | `ownKeys`                  | [Object.getOwnPropertyNames](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/getOwnPropertyNames), [Object.getOwnPropertySymbols](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/getOwnPropertySymbols), `for..in`, `Object/keys/values/entries` |
+
+``` javascript
+// 实例：跳过以下划线 _ 开头的属性
+let user = {
+  name: "Curly",
+  age: 26,
+  _password: "**"
+};
+user = new Proxy(user, {
+  ownKeys(target) {
+    return Object.keys(target).filter(key => !key.startsWith("_"));
+  }
+})
+// "ownKeys" 过滤掉了 _password
+for(let key in user) alert(key); // name，然后是 age
+
+// 对这些方法的效果相同：
+alert( Object.keys(user) ); // name,age
+alert( Object.values(user) ); // John,30
+```
+
+``` javascript
+// 实例：遍历出不存在的属性
+let user = {
+	name: "Curly",
+	age: 26
+};
+user = new Proxy(user, {
+  ownKeys(target) {
+    return Object.keys(target).concat(["a", "b"]);
+  },
+  getOwnPropertyDescriptor(target, prop) {
+    return {
+      configurable: true,
+      enumerable: true
+    }
+  }
+});
+
+console.log(Object.keys(user)); // ["name", "age", "a", "b"];
+console.log("a" in user); // false
+```
+
+### Delete
+
+拦截删除属性操作
+
+``` javascript
+let user = {
+  name: "Curly",
+  _password: "**"
+}
+
+user = new Proxy(user, {
+  deleteProperty(target, prop) { // 拦截属性删除
+    if (prop.startsWith('_')) {
+      throw new Error("Access denied");
+    } else {
+      delete target[prop];
+      return true;
+    }
+  },
+})
+```
+
+### HasProperty
+
+拦截属性存在性检查
+
+``` javascript
+let range = {
+  from: 0,
+  to: 10
+};
+
+range = new Proxy(range, {
+  has(target, prop) {
+    return prop >= target.from & prop <= target.to;
+  }
+});
+
+console.log(5 in range); // true
+console.log(20 in range); // false
+```
+
+### Call
+
+包装函数，会将所有东西转发给内部函数
+
+``` javascript
+function delay(f, ms) {
+  return new Proxy(f, {
+    apply(target, thisArg, args) {
+      setTimeout(() => target.apply(thisArg, args), ms);
+    }
+  });
+}
+
+function sayHi(user) {
+  alert(`Hello, ${user}!`);
+}
+
+sayHi = delay(sayHi, 3000);
+
+alert(sayHi.length); // 1 (*) proxy 将“获取 length”的操作转发给目标对象
+
+sayHi("John"); // Hello, John!（3 秒后）
+```
+
+### Reflect
+
+内建对象，`Reflect`用于简化`proxy`的创建。
+
+每个可被`Proxy`捕获的内部方法，在`Reflect`中都有一个对应方法
+
+## Eval
+
+调用 `eval(code)` 会运行代码字符串，并返回最后一条语句的结果。
+
+- 在现代 JavaScript 编程中，很少使用它，通常也不需要使用它。
+- 可以访问外部局部变量。这被认为是一个不好的编程习惯。
+- 要在全局作用域中 `eval` 代码，可以使用 `window.eval(code)` 进行替代。
+- 此外，如果你的代码需要从外部作用域获取数据，请使用 `new Function`，并将数据作为参数传递给函数。
+
+
+
+## 柯里化（Currying）
+
+柯里化是一种函数转换，根据函数`f(a,b,c)`转换出兼顾`f(a,b,c)`和`f(a)(b)(c)`的形式。
+
+柯里化的好处：更容易生成偏函数。
+
+``` javascript
+function curried(...args) {
+  if (args.length >= func.length) { // (1)
+    return func.apply(this, args);
+  } else {
+    return function pass(...args2) { // (2)
+      return curried.apply(this, args.concat(args2));
+    }
+  }
+};
+
+function sum(a, b, c) {
+  return a + b + c;
+}
+
+let curriedSum = curry(sum);
+
+alert( curriedSum(1, 2, 3) ); // 6，仍然可以被正常调用
+alert( curriedSum(1)(2,3) ); // 6，对第一个参数的柯里化
+alert( curriedSum(1)(2)(3) ); // 6，全柯里化
+```
+
+
+
+
+
+## BigInt
+
+任意长度的整数
+
+``` javascript
+const bigint = 1234567890123456789012345678901234567890n;
+
+const sameBigint = BigInt("1234567890123456789012345678901234567890");
+
+const bigintFromNumber = BigInt(10); // 与 10n 相同
+```
+
+对BigInt的运算得到是BigInt值
+
+``` javascript
+console.log(2n + 3n); // 5n
+```
+
+### Number和BigInt
+
+BigInt无法和number混合运算
+
+``` javascript
+alert(1n + 2); // Error: Cannot mix BigInt and other types
+```
+
+Number -> BigInt
+
+``` javascript
+BigInt(20); // 20n
+BigInt(2.6); // 报错，只能接受整数
+```
+
+BigInt -> Number
+
+``` javascript
+Number(2n); //2
+```
+
+值比较
+
+``` javascript
+alert( 2n > 1 ); // true
+alert( 1 == 1n ); // true
+alert( 1 === 1n ); // false，类型不同
+```
+
+### Polyfill
+
+BigInt是新添加的类型，在老的浏览器中未得到支持。做常规polyfill需要更改算术运算符的默认逻辑，会带来比较大的性能开销。因此目前使用JSBI库的封装方法会更可行一些。
+
+
+
 # 代码质量
 
 ## 在Chrome中调试
@@ -3061,10 +3364,6 @@ describe("Raises x to power n", function() { // 分组，描述当前在测试�
   });
 });
 ```
-
-
-
-
 
 ## Polyfill
 
