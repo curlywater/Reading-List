@@ -2788,6 +2788,222 @@ let range = {
 
 
 
+# 模块
+
+## 模块简介
+
+历史上的模块方案：
+
+- AMD，require.js实现
+- CommonJS，Node.js的模块系统
+- UMD，兼容AMD和CommonJS
+
+### ES6 Module
+
+``` javascript
+<!doctype html>
+<script type="module">
+  import {sayHi} from './say.js';
+
+  document.body.innerHTML = sayHi('John');
+</script>
+<script type="module" src="user.js"></script>
+```
+
+由于模块支持特殊的关键字和功能，因此我们必须通过使用 `<script type="module">` 特性（attribute）来告诉浏览器，此脚本应该被当作模块（module）来对待。
+
+浏览器会自动获取并解析（evaluate）导入的模块（如果需要，还可以分析该模块的导入），然后运行该脚本。
+
+#### 核心功能
+
+- 始终使用"use strict"
+
+- 模块级作用域，通过`import/export`交流
+
+- 模块代码仅在第一次导入时解析
+
+  - 在第一次导入时执行模块代码
+  - 模块`export`的内容共享给所有对其的导入
+
+- `import.meta`对象包含关于当前模块的信息
+
+  ``` javascript
+  <script type="module">
+    alert(import.meta.url); // 脚本的 URL
+  </script>
+  ```
+
+- `"this"`是`undefined`
+
+#### 浏览器特定功能
+
+与常规脚本相比，拥有 `type="module"` 标识的脚本有一些特定于浏览器的差异。
+
+- `defer`请求脚本
+
+  - 并行下载
+  - HTML文档完全准备就绪再执行
+  - 保持顺序执行
+
+- 可以强制使用`async`请求
+
+  ``` javascript
+  <!-- 所有依赖都获取完成（analytics.js）然后脚本开始运行 -->
+  <!-- 不会等待 HTML 文档或者其他 <script> 标签 -->
+  <script async type="module">
+    import {counter} from './analytics.js';
+  
+    counter.count();
+  </script>
+  ```
+
+- 外部脚本请求：同一`src`只会请求一次，`CORS`
+
+- nomodule处理兼容性
+
+  ``` javascript
+  <script nomodule>
+    alert("Modern browsers know both type=module and nomodule, so skip this")
+    alert("Old browsers ignore script with unknown type=module, but execute this.");
+  </script>
+  ```
+
+
+
+## 导出和导入
+
+### 导出
+
+#### 在声明前导出
+
+``` javascript
+export const TODAY = "2020/06/06";
+export let lastSyncStamp = new Date();
+export function () {}
+export class {}
+```
+
+`function声明/class`后不跟分号，大部分 JavaScript 样式指南都不建议在函数和类声明后使用分号。
+
+#### 导出与声明分开
+
+``` javascript
+function sayHi(user) {
+  alert(`Hello, ${user}!`);
+}
+
+function sayBye(user) {
+  alert(`Bye, ${user}!`);
+}
+
+export {sayHi, sayBye}; // 导出变量列表
+```
+
+#### Export "as"
+
+``` javascript
+export {sayHi as hi, sayBye as bye};
+```
+
+#### Export default
+
+``` javascript
+export default class User {
+  constructor(name) {
+    this.name = name;
+  }
+}
+
+export function sayHi () {
+  alert("Hi");
+}
+```
+
+等同于
+
+``` javascript
+class User {
+  constructor(name) {
+    this.name = name;
+  }
+}
+
+function sayHi () {
+  alert("Hi");
+}
+
+export {User as default, sayHi};
+```
+
+导入
+
+``` javascript
+import {default as User, sayHi} from "./user.js"
+```
+
+``` javascript
+import User, {sayHi} from "./user.js"
+```
+
+默认导出 VS 命名导出：导入默认导出变量名可随意设置，强制规范减少->风险增加
+
+#### 重新导出
+
+`export ... from ...`导入内容并立即将其导出
+
+``` javascript
+export {sayHi} from './say.js'; 
+export User from './user.js' // 无效，重新导出默认导出必须写成👇
+export {default as User} from './user.js'; // 重新导出 default
+
+export * from './user.js'; // 只重新导出命名导出
+export {default} from './user.js'; // 重新导出默认的导出
+```
+
+### 导入
+
+#### import
+
+``` javascript
+import {sayHi, sayBye} from './say.js';
+```
+
+``` javascript
+import * as say from './say.js'; // 将所有内容导入为一个对象
+```
+
+为了支持构建工具`tree-shaking`优化，以及提高代码维护性，最好避免使用`import*`
+
+#### import "as"
+
+``` javascript
+import {sayHi as hi, sayBye as bye} from './say.js';
+
+hi('John'); // Hello, John!
+bye('John'); // Bye, John!
+```
+
+#### 动态导入
+
+`import(module)` 表达式加载模块并返回一个 promise，该 promise resolve 为一个包含其所有导出的模块对象。
+
+尽管 `import()` 看起来像一个函数调用，但它只是一种特殊语法，只是恰好使用了括号（类似于 `super()`）。因此，我们不能将 `import` 复制到一个变量中，或者对其使用 `call/apply`。因为它不是一个函数。
+
+``` html
+<!doctype html>
+<script>
+  async function load() {
+    let say = await import('./say.js');
+    say.hi(); // Hello!
+    say.bye(); // Bye!
+    say.default(); // Module loaded (export default)!
+  }
+</script>
+<button onclick="load()">Click me</button>
+```
+
+
+
 # 代码质量
 
 ## 在Chrome中调试
