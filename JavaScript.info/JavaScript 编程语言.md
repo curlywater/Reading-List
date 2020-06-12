@@ -102,8 +102,8 @@ const size = getSize();
 - 安全范围
 
   ```javascript
-  const biggestInt  = Number.MAX_SAFE_INTEGER  //  (253 - 1) =>  9007199254740991
-  const smallestInt = Number.MIN_SAFE_INTEGER  // -(253 - 1) => -9007199254740991
+  const biggestInt  = Number.MAX_SAFE_INTEGER  //  (2^53 - 1) =>  9007199254740991
+  const smallestInt = Number.MIN_SAFE_INTEGER  // -(2^53 - 1) => -9007199254740991
   ```
 
   超出安全范围的数据无法正确算术运算，无法通过JSON parser正确转换为对应数值。
@@ -687,7 +687,7 @@ Source: https://stackoverflow.com/questions/36527642/difference-between-codepoin
 
 ### 数组遍历
 
-- `for (let i = 0; i < arr.length; i++)` 运行得最快，可兼容旧版本浏览器。
+- `for (let i = 0; i < arr.length; i++)` 运行的最快，可兼容旧版本浏览器。
 - `for (let item of arr)` 现代语法，只能访问value无法访问索引
 - `for (let i in arr)` 请不要使用该方法遍历数组。
   - `for..in` 是针对对象的遍历方法，会遍历所有属性，处理类数组对象时，“额外”属性被遍历将会导致问题。
@@ -824,7 +824,7 @@ range[Symbol.iterator] = function() {
 - `map.entries()` - 返回所有实体`[[key, value]...]`, **是可迭代对象（MapIterator），并不是数组**，默认情况下使用`for...of`
 - `map.forEach((value, key, map) => {})`
 
-### 普通对象 => Map`
+### 普通对象 => Map
 
 `Object.entries(obj)` => `[[key, value], [key1, value1]]`
 
@@ -1046,9 +1046,8 @@ let meetup = JSON.parse(str, function(key, value) {
 
 执行上下文栈保存还在使用的执行上下文
 
-- 调用函数时，产生执行上下文
-- 函数暂停时，压入执行上下文栈
-- 函数再执行时，从执行上下文栈取出
+- 调用函数时，产生执行上下文压栈
+- 函数执行完毕时，出栈
 
 ### 递归
 
@@ -1121,7 +1120,6 @@ alert( [...names] ); // "Happy, Tim, Cello"
 
 - 环境记录（Environment Record）：存放变量和函数声明的地方，函数声明在词法环境创建时便可用；
 - 外层引用（outer）：提供了访问父词法环境的引用，可能为null，父词法环境指的是函数定义时的环境；
-- this绑定（This Binding）：确定当前环境中this的指向
 
 
 
@@ -1450,7 +1448,7 @@ alert( double(5) ); // = mul(2, 5) = 10
 
 ``` javascript
 function partial(func, ...argsBound) {
-  return function(...args) { // (*)
+  return (...args) => { // (*)
     return func.call(this, ...argsBound, ...args);
   }
 }
@@ -1652,7 +1650,7 @@ dog -> animal -> Object.prototype -> null
 
 默认情况下，由`new F()`创建的对象可以通过`[[Prototype]]`访问到指向`F`的`constructor`
 
-![Screen Shot 2020-06-04 at 2.44.59 PM](./assets/prototype.png)
+![Screen Shot 2020-06-04 at 2.44.59 PM](../../Posts/assets/prototype.png)
 
 然而，`constructor`可以被任意赋值，因此也就不再可靠
 
@@ -1664,7 +1662,7 @@ dog -> animal -> Object.prototype -> null
 
 按照规范，所有的内建原型顶端都是 `Object.prototype`。这就是为什么有人说“一切都从对象继承而来”。
 
-![](./assets/Object.prototype.png)
+![](../../Posts/assets/Object.prototype.png)
 
 `null` 和 `undefined` 没有对象包装器，没有原型。
 
@@ -2037,7 +2035,7 @@ alert(filteredArr.isEmpty()); // Error: filteredArr.isEmpty is not a function
 
 ### objA.isPrototypeOf(objB)
 
-如果 `objA` 处在 `objB` 的原型链中，则返回 `true`
+如果 `objA.prototype` 处在 `objB` 的原型链中，则返回 `true`
 
 `Class.isPrototypeOf(obj) === obj instanceof Class`
 
@@ -2244,7 +2242,7 @@ let promise = new Promise(function (resolve, reject) {
 })
 ```
 
-- `promise`对象通过Promise构造器生成
+- `promise`对象通过`Promise`构造器生成
 - `new Promise`的参数是一个函数，称之为执行器，执行器接受的两个参数`resolve/reject`是JS内部提供的函数
 - 创建`promise`对象时，执行器会自动运行并尝试执行一项工作。
 - 调用`resolve`函数通知`promise`工作执行成功
@@ -2298,7 +2296,7 @@ new Promise((resolve, reject) => {
 - `finally`会将`promise`的结果直接传递下去
 - `finally`并不会默认最后执行，上述代码`finally`会在`then`之前执行
 
-**如果结果已经存在，新注册的消费会立即获得结果并执行代码**
+**如果结果已经存在，新注册的消费者会立即获得结果并执行代码**
 
 ``` javascript
 let promise = new Promise(resolve => resolve("done!"));
@@ -2334,7 +2332,7 @@ new Promise(function(resolve, reject) {
 
 ### 内部实现：隐式try...catch
 
-在 `executor/handler` 周围的“隐式 `try..catch`”自动捕获了 error，并将其变为 rejected promise。
+在 `executor/handler` 周围的“隐式 `try..catch`”自动捕获了 `error`，并将其变为 `rejected promise`。
 
 ### catch
 
@@ -2575,7 +2573,7 @@ function* generateSequence () {
 
 `generator.next()`恢复`generator`函数块內代码执行，执行到最近的`yield`语句，并且返回`{value:.., done:...}`对象：
 
-- `value`: 产出的（yielded）的值。
+- `value`: 产出的（yield）的值。
 - `done`: 如果 generator 函数已执行完成则为 `true`，否则为 `false`。
 
 ``` javascript
@@ -3372,4 +3370,4 @@ describe("Raises x to power n", function() { // 分组，描述当前在测试�
 
 新的语言特性包括新的内建函数和语法结构。transpiler会将新的语法结构转换为旧的语法结构。polyfill是用于添加/更新新函数的脚本。polyfill指路[core-js](https://github.com/zloirock/core-js)。
 
-Babel支持transpiler和polyfill，是解决引擎对语言特性支持问题的良药。<!---->
+Babel支持transpiler和polyfill，是解决引擎对语言特性支持问题的良药。
