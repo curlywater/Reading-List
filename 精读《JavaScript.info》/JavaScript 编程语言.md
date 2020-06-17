@@ -3206,9 +3206,9 @@ sayHi("John"); // Hello, John!（3 秒后）
 
 ### Reflect
 
-内建对象，`Reflect`用于简化`proxy`的创建。
+内建对象，针对对象操作的新API
 
-每个可被`Proxy`捕获的内部方法，在`Reflect`中都有一个对应方法
+这部分内容推荐阅读[《ECMAScript 6 入门》](https://es6.ruanyifeng.com/#docs/reflect)
 
 ## Eval
 
